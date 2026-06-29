@@ -62,6 +62,7 @@ const resetBtn = document.querySelector("#resetBtn");
 
 let state = createInitialState();
 let selectedPieceId = null;
+let selectedSourceId = null;
 let history = [];
 let moveLog = [];
 
@@ -80,6 +81,57 @@ function getSelectedPiece() {
 function getSelectedActions() {
   const piece = getSelectedPiece();
   return piece ? getLegalActions(state, piece.id) : [];
+}
+
+function getSelectedCombos(piece) {
+  return getCombinations(state, piece.side).filter((combo) => combo.memberIds.includes(piece.id));
+}
+
+function comboMemberLabel(memberId) {
+  const member = state.pieces.find((item) => item.id === memberId);
+  if (!member) return "";
+  return `${fullPieceNames[member.type]}${coord(member.col, member.row)}`;
+}
+
+function comboSourceLabel(combo) {
+  return `${comboNames[combo.kind]}：${combo.memberIds.map(comboMemberLabel).join(" + ")}`;
+}
+
+function getActionSources() {
+  const piece = getSelectedPiece();
+  if (!piece) return [];
+
+  const actions = getSelectedActions();
+  const sources = [
+    {
+      id: "single",
+      type: "single",
+      label: `单兵：${fullPieceNames[piece.type]}`,
+      memberIds: [piece.id],
+      actions: actions.filter((action) => action.kind !== "group" && action.kind !== "combo-step"),
+    },
+  ];
+
+  for (const combo of getSelectedCombos(piece)) {
+    sources.push({
+      id: `combo:${combo.id}`,
+      type: "combo",
+      combo,
+      label: comboSourceLabel(combo),
+      memberIds: [...combo.memberIds],
+      actions: actions.filter((action) => action.group?.id === combo.id),
+    });
+  }
+
+  return sources;
+}
+
+function getSelectedSource() {
+  return getActionSources().find((source) => source.id === selectedSourceId) ?? null;
+}
+
+function getVisibleActions() {
+  return getSelectedSource()?.actions ?? [];
 }
 
 function actionLabel(action) {
@@ -110,10 +162,12 @@ function actionLabel(action) {
 
 function renderBoard() {
   const selected = getSelectedPiece();
-  const legalActions = getSelectedActions();
+  const selectedSource = getSelectedSource();
+  const legalActions = getVisibleActions();
   const legalTargets = new Set(legalActions.map((action) => `${action.to.col},${action.to.row}`));
   const protectedIds = getProtectedPieceIds(state);
   const comboMemberIds = new Set(getCombinations(state).flatMap((combo) => combo.memberIds));
+  const sourceMemberIds = new Set(selectedSource?.memberIds ?? []);
 
   boardEl.replaceChildren();
 
@@ -142,6 +196,7 @@ function renderBoard() {
         button.ariaLabel = `${getPieceLabel(piece)}，${coord(col, row)}`;
         if (protectedIds.has(piece.id)) button.classList.add("protected");
         if (comboMemberIds.has(piece.id)) button.classList.add("combo-member");
+        if (sourceMemberIds.has(piece.id)) button.classList.add("source-member");
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           handlePieceClick(piece.id);
@@ -162,7 +217,8 @@ function renderStatus() {
 
 function renderActions() {
   const piece = getSelectedPiece();
-  const actions = getSelectedActions();
+  const sources = getActionSources();
+  const selectedSource = getSelectedSource();
   actionsEl.replaceChildren();
 
   if (!piece) {
@@ -173,12 +229,39 @@ function renderActions() {
 
   selectedInfoEl.textContent = `${getPieceLabel(piece)} · ${coord(piece.col, piece.row)}`;
 
-  if (actions.length === 0) {
-    actionsEl.append(emptyLine("没有合法行动"));
+  const sourceList = document.createElement("div");
+  sourceList.className = "source-list";
+  for (const source of sources) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "source-button";
+    button.classList.toggle("selected-source", source.id === selectedSource?.id);
+    button.textContent = source.label;
+    button.title = source.label;
+    button.addEventListener("click", () => {
+      selectedSourceId = source.id;
+      render();
+    });
+    sourceList.append(button);
+  }
+  actionsEl.append(sourceList);
+
+  if (!selectedSource) {
+    actionsEl.append(emptyLine("先选择单兵或一个具体组合"));
     return;
   }
 
-  for (const action of actions) {
+  const actionTitle = document.createElement("div");
+  actionTitle.className = "action-subtitle";
+  actionTitle.textContent = "具体行动";
+  actionsEl.append(actionTitle);
+
+  if (selectedSource.actions.length === 0) {
+    actionsEl.append(emptyLine("这个来源没有合法行动"));
+    return;
+  }
+
+  for (const action of selectedSource.actions) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "action-button";
@@ -238,6 +321,7 @@ function renderMoveLog() {
 
 function render() {
   if (selectedPieceId && !getSelectedPiece()) selectedPieceId = null;
+  if (selectedSourceId && !getSelectedSource()) selectedSourceId = null;
   renderStatus();
   renderBoard();
   renderActions();
@@ -248,12 +332,13 @@ function render() {
 function handlePieceClick(pieceId) {
   const piece = state.pieces.find((item) => item.id === pieceId && item.alive);
   if (!piece || piece.side !== state.turn || state.winner) return;
+  selectedSourceId = null;
   selectedPieceId = selectedPieceId === pieceId ? null : pieceId;
   render();
 }
 
 function handleCellClick(col, row) {
-  const actions = getSelectedActions().filter((action) => action.to.col === col && action.to.row === row);
+  const actions = getVisibleActions().filter((action) => action.to.col === col && action.to.row === row);
   if (actions.length === 1) {
     performAction(actions[0]);
   }
@@ -263,17 +348,20 @@ function performAction(action) {
   history.push({
     state,
     selectedPieceId,
+    selectedSourceId,
     moveLog: [...moveLog],
   });
   moveLog.push(`${sideNames[state.turn]}：${actionLabel(action)}`);
   state = applyAction(state, action);
   selectedPieceId = null;
+  selectedSourceId = null;
   render();
 }
 
 function resetGame() {
   state = createInitialState();
   selectedPieceId = null;
+  selectedSourceId = null;
   history = [];
   moveLog = [];
   render();
@@ -284,6 +372,7 @@ function undo() {
   if (!previous) return;
   state = previous.state;
   selectedPieceId = previous.selectedPieceId;
+  selectedSourceId = previous.selectedSourceId;
   moveLog = previous.moveLog;
   render();
 }

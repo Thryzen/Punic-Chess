@@ -97,6 +97,7 @@ h2 {
 }
 
 .controls button,
+.source-button,
 .action-button {
   border: 1px solid #b8c2c9;
   background: #fff;
@@ -107,11 +108,13 @@ h2 {
 }
 
 .controls button:hover,
+.source-button:hover,
 .action-button:hover {
   border-color: var(--accent);
 }
 
 .controls button:disabled,
+.source-button:disabled,
 .action-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -238,6 +241,14 @@ h2 {
     0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
+.piece.source-member {
+  box-shadow:
+    0 0 0 5px rgba(46, 125, 91, 0.54),
+    0 0 0 10px rgba(46, 125, 91, 0.16),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.16);
+}
+
 .piece.combo-member::after {
   content: "";
   position: absolute;
@@ -274,6 +285,35 @@ h2 {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+}
+
+.source-list {
+  display: grid;
+  gap: 8px;
+}
+
+.source-button {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.source-button.selected-source {
+  border-color: var(--accent);
+  background: #e6f2ed;
+  color: #174935;
+  font-weight: 700;
+}
+
+.action-subtitle {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .empty-state {

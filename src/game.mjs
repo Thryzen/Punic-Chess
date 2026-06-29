@@ -307,15 +307,28 @@ function addComboStepActions(state, actions, piece) {
   const combos = getCombinations(state, piece.side).filter((combo) => combo.memberIds.includes(piece.id));
   if (combos.length === 0) return;
 
-  for (const [dx, dy] of DIRECTIONS) {
-    const col = piece.col + dx;
-    const row = piece.row + dy;
-    const base = makeStepAction(state, piece, col, row, "combo-step");
-    if (!base || base.kind === "guard-clash") continue;
-    const next = stateAfterSimpleMoveForCheck(state, piece, col, row);
-    if (!next) continue;
-    const stillCombined = getCombinations(next, piece.side).some((combo) => combo.memberIds.includes(piece.id));
-    if (stillCombined) addAction(actions, { ...base, kind: "combo-step" });
+  for (const combo of combos) {
+    for (const [dx, dy] of DIRECTIONS) {
+      const col = piece.col + dx;
+      const row = piece.row + dy;
+      const base = makeStepAction(state, piece, col, row, "combo-step");
+      if (!base || base.kind === "guard-clash") continue;
+      const next = stateAfterSimpleMoveForCheck(state, piece, col, row);
+      if (!next) continue;
+      const sameComboPreserved = getCombinations(next, piece.side).some((candidate) => candidate.id === combo.id);
+      if (!sameComboPreserved) continue;
+      addAction(actions, {
+        ...base,
+        kind: "combo-step",
+        group: {
+          id: combo.id,
+          kind: combo.kind,
+          memberIds: [...combo.memberIds],
+          dx,
+          dy,
+        },
+      });
+    }
   }
 }
 
