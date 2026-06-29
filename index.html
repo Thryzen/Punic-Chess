@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>博弈类游戏棋</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="play-area" aria-label="棋盘">
+        <div class="topbar">
+          <div>
+            <h1>博弈类游戏棋</h1>
+            <p id="status" class="status">北方回合</p>
+          </div>
+          <div class="controls" aria-label="对局控制">
+            <button id="undoBtn" type="button" title="撤销上一步">撤销</button>
+            <button id="resetBtn" type="button" title="重新开始">重开</button>
+          </div>
+        </div>
+        <div id="board" class="board" aria-label="6乘10棋盘"></div>
+      </section>
+
+      <aside class="side-panel" aria-label="对局信息">
+        <section class="panel-section">
+          <h2>行动</h2>
+          <div id="selectedInfo" class="selected-info">未选择</div>
+          <div id="actions" class="actions"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>组合</h2>
+          <div id="combos" class="combos"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>记录</h2>
+          <ol id="moveLog" class="move-log"></ol>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/ui.mjs"></script>
+  </body>
+</html>
