@@ -30,8 +30,8 @@ const fullPieceNames = {
 };
 
 const sideNames = {
-  north: "北方",
-  south: "南方",
+  north: "罗马共和国",
+  south: "迦太基",
 };
 
 const comboNames = {
