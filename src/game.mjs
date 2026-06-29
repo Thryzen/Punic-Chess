@@ -496,3 +496,96 @@ export function applyAction(state, action) {
 
   return finishMove(next, moving.side);
 }
+
+export function applySurrender(state, side = state.turn) {
+  const next = cloneState(state);
+  if (!next.winner) {
+    next.winner = opponentOf(side);
+  }
+  return next;
+}
+
+function getActionPieceIds(action) {
+  return action.kind === "group" ? [...action.group.memberIds] : [action.pieceId];
+}
+
+function squareKey(square) {
+  return `${square.col},${square.row}`;
+}
+
+export function getActionPreview(state, action) {
+  const next = applyAction(state, action);
+  const moves = [];
+
+  for (const pieceId of getActionPieceIds(action)) {
+    const before = getPieceById(state, pieceId);
+    const after = getPieceById(next, pieceId);
+    if (!before?.alive || !after?.alive) continue;
+    if (before.col === after.col && before.row === after.row) continue;
+
+    moves.push({
+      pieceId,
+      side: after.side,
+      type: after.type,
+      from: { col: before.col, row: before.row },
+      to: { col: after.col, row: after.row },
+    });
+  }
+
+  const existingBlocked = new Set((state.blocked ?? []).map(squareKey));
+  const blockedSquares = (next.blocked ?? [])
+    .filter((square) => !existingBlocked.has(squareKey(square)))
+    .map((square) => ({ col: square.col, row: square.row }));
+
+  return {
+    moves,
+    captureIds: [...(action.captures ?? [])],
+    blockedSquares,
+  };
+}
+
+export function isSideInCheck(state, side) {
+  if (state.winner) return false;
+  const opponent = opponentOf(side);
+  const checkState = {
+    ...cloneState(state),
+    turn: opponent,
+  };
+
+  for (const piece of alivePieces(checkState, opponent)) {
+    for (const action of getLegalActions(checkState, piece.id)) {
+      const next = applyAction(checkState, action);
+      if (next.winner === opponent) return true;
+    }
+  }
+
+  return false;
+}
+
+export function getActionEffects(state, action) {
+  const moving = getPieceById(state, action.pieceId);
+  if (!moving || !moving.alive) {
+    return {
+      captureIds: [...(action.captures ?? [])],
+      entersCheck: false,
+      blockedByCheck: false,
+      wins: false,
+    };
+  }
+
+  const wasInCheck = isSideInCheck(state, moving.side);
+  const next = applyAction(state, action);
+  const wins = next.winner === moving.side;
+  const entersCheck = wins ? false : isSideInCheck(next, moving.side);
+
+  return {
+    captureIds: [...(action.captures ?? [])],
+    entersCheck,
+    blockedByCheck: !wasInCheck && entersCheck,
+    wins,
+  };
+}
+
+export function actionWouldEnterCheck(state, action) {
+  return getActionEffects(state, action).blockedByCheck;
+}

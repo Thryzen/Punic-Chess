@@ -2,7 +2,10 @@ import {
   BOARD_COLS,
   BOARD_ROWS,
   applyAction,
+  applySurrender,
   createInitialState,
+  getActionEffects,
+  getActionPreview,
   getCombinations,
   getLegalActions,
   getPieceAt,
@@ -10,46 +13,17 @@ import {
   isBlocked,
   isOwnPalace,
 } from "./game.mjs";
-
-const pieceNames = {
-  king: "王",
-  queen: "后",
-  guard: "卫",
-  chariot: "车",
-  yellow: "黄",
-  soldier: "兵",
-};
-
-const fullPieceNames = {
-  king: "王",
-  queen: "后",
-  guard: "卫",
-  chariot: "车兵",
-  yellow: "黄兵",
-  soldier: "兵",
-};
-
-const sideNames = {
-  north: "罗马共和国",
-  south: "迦太基",
-};
-
-const comboNames = {
-  siege: "攻城车",
-  special: "特种兵",
-  "three-arms": "三兵种",
-};
-
-const directionNames = new Map([
-  ["-1,-1", "左上"],
-  ["0,-1", "上"],
-  ["1,-1", "右上"],
-  ["-1,0", "左"],
-  ["1,0", "右"],
-  ["-1,1", "左下"],
-  ["0,1", "下"],
-  ["1,1", "右下"],
-]);
+import {
+  comboNames,
+  comboSourceLabel,
+  coord,
+  formatActionLabel,
+  formatActionTags,
+  fullPieceNames,
+  getPieceLabel,
+  pieceNames,
+  sideNames,
+} from "./labels.mjs";
 
 const boardEl = document.querySelector("#board");
 const statusEl = document.querySelector("#status");
@@ -59,20 +33,15 @@ const combosEl = document.querySelector("#combos");
 const moveLogEl = document.querySelector("#moveLog");
 const undoBtn = document.querySelector("#undoBtn");
 const resetBtn = document.querySelector("#resetBtn");
+const surrenderBtn = document.querySelector("#surrenderBtn");
 
 let state = createInitialState();
 let selectedPieceId = null;
 let selectedSourceId = null;
 let history = [];
 let moveLog = [];
-
-function coord(col, row) {
-  return `${col + 1}列${row + 1}行`;
-}
-
-function getPieceLabel(piece) {
-  return `${sideNames[piece.side]}${fullPieceNames[piece.type]}`;
-}
+let warningMessage = "";
+let previewAction = null;
 
 function getSelectedPiece() {
   return state.pieces.find((piece) => piece.id === selectedPieceId && piece.alive) ?? null;
@@ -85,16 +54,6 @@ function getSelectedActions() {
 
 function getSelectedCombos(piece) {
   return getCombinations(state, piece.side).filter((combo) => combo.memberIds.includes(piece.id));
-}
-
-function comboMemberLabel(memberId) {
-  const member = state.pieces.find((item) => item.id === memberId);
-  if (!member) return "";
-  return `${fullPieceNames[member.type]}${coord(member.col, member.row)}`;
-}
-
-function comboSourceLabel(combo) {
-  return `${comboNames[combo.kind]}：${combo.memberIds.map(comboMemberLabel).join(" + ")}`;
 }
 
 function getActionSources() {
@@ -117,7 +76,7 @@ function getActionSources() {
       id: `combo:${combo.id}`,
       type: "combo",
       combo,
-      label: comboSourceLabel(combo),
+      label: comboSourceLabel(state, combo),
       memberIds: [...combo.memberIds],
       actions: actions.filter((action) => action.group?.id === combo.id),
     });
@@ -134,40 +93,46 @@ function getVisibleActions() {
   return getSelectedSource()?.actions ?? [];
 }
 
-function actionLabel(action) {
-  const piece = state.pieces.find((item) => item.id === action.pieceId);
-  const target = getPieceAt(state, action.to.col, action.to.row);
-  const place = coord(action.to.col, action.to.row);
+function squareKey(col, row) {
+  return `${col},${row}`;
+}
 
-  if (action.kind === "group") {
-    const direction = directionNames.get(`${action.group.dx},${action.group.dy}`);
-    return `${comboNames[action.group.kind]}整体${direction}：${fullPieceNames[piece.type]}到${place}`;
-  }
-
-  if (action.kind === "combo-step") {
-    const capture = target ? `，吃${getPieceLabel(target)}` : "";
-    return `组合内移动：${fullPieceNames[piece.type]}到${place}${capture}`;
-  }
-
-  if (action.kind === "guard-clash") {
-    return `卫同归：到${place}${target ? `，带走${getPieceLabel(target)}` : ""}`;
-  }
-
-  if (action.kind === "capture") {
-    return `${fullPieceNames[piece.type]}吃${getPieceLabel(target)}：${place}`;
-  }
-
-  return `${fullPieceNames[piece.type]}到${place}`;
+function createPreviewMarker(className) {
+  const marker = document.createElement("span");
+  marker.className = `preview-marker ${className}`;
+  marker.ariaHidden = "true";
+  return marker;
 }
 
 function renderBoard() {
   const selected = getSelectedPiece();
   const selectedSource = getSelectedSource();
   const legalActions = getVisibleActions();
-  const legalTargets = new Set(legalActions.map((action) => `${action.to.col},${action.to.row}`));
+  const legalTargets = new Set(legalActions.map((action) => squareKey(action.to.col, action.to.row)));
   const protectedIds = getProtectedPieceIds(state);
   const comboMemberIds = new Set(getCombinations(state).flatMap((combo) => combo.memberIds));
   const sourceMemberIds = new Set(selectedSource?.memberIds ?? []);
+  const preview = previewAction ? getActionPreview(state, previewAction) : null;
+  const previewGhosts = new Map();
+  const previewSourceIds = new Set();
+  const previewCaptureSquares = new Set();
+  const previewBlockedSquares = new Set();
+
+  if (preview) {
+    for (const move of preview.moves) {
+      previewSourceIds.add(move.pieceId);
+      previewGhosts.set(squareKey(move.to.col, move.to.row), move);
+    }
+
+    for (const capturedId of preview.captureIds) {
+      const captured = state.pieces.find((piece) => piece.id === capturedId && piece.alive);
+      if (captured) previewCaptureSquares.add(squareKey(captured.col, captured.row));
+    }
+
+    for (const square of preview.blockedSquares) {
+      previewBlockedSquares.add(squareKey(square.col, square.row));
+    }
+  }
 
   boardEl.replaceChildren();
 
@@ -182,9 +147,18 @@ function renderBoard() {
       if (isOwnPalace("south", col, row)) cell.classList.add("south-palace");
       if (isBlocked(state, col, row)) cell.classList.add("blocked");
       if (selected?.col === col && selected?.row === row) cell.classList.add("selected");
-      if (legalTargets.has(`${col},${row}`)) cell.classList.add("legal-target");
+      if (legalTargets.has(squareKey(col, row))) cell.classList.add("legal-target");
+      if (previewCaptureSquares.has(squareKey(col, row))) cell.classList.add("preview-capture");
+      if (previewBlockedSquares.has(squareKey(col, row))) cell.classList.add("preview-blocked");
 
       cell.addEventListener("click", () => handleCellClick(col, row));
+
+      if (previewCaptureSquares.has(squareKey(col, row))) {
+        cell.append(createPreviewMarker("preview-capture-marker"));
+      }
+      if (previewBlockedSquares.has(squareKey(col, row))) {
+        cell.append(createPreviewMarker("preview-blocked-marker"));
+      }
 
       const piece = getPieceAt(state, col, row);
       if (piece) {
@@ -197,11 +171,21 @@ function renderBoard() {
         if (protectedIds.has(piece.id)) button.classList.add("protected");
         if (comboMemberIds.has(piece.id)) button.classList.add("combo-member");
         if (sourceMemberIds.has(piece.id)) button.classList.add("source-member");
+        if (previewSourceIds.has(piece.id)) button.classList.add("preview-source-piece");
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           handlePieceClick(piece.id);
         });
         cell.append(button);
+      }
+
+      const ghost = previewGhosts.get(squareKey(col, row));
+      if (ghost) {
+        const ghostEl = document.createElement("div");
+        ghostEl.className = `piece preview-piece ${ghost.side} type-${ghost.type}`;
+        ghostEl.textContent = pieceNames[ghost.type];
+        ghostEl.ariaHidden = "true";
+        cell.append(ghostEl);
       }
 
       boardEl.append(cell);
@@ -211,8 +195,10 @@ function renderBoard() {
 
 function renderStatus() {
   statusEl.classList.toggle("win", Boolean(state.winner));
-  statusEl.textContent = state.winner ? `${sideNames[state.winner]}获胜` : `${sideNames[state.turn]}回合`;
+  statusEl.classList.toggle("warning", Boolean(warningMessage));
+  statusEl.textContent = warningMessage || (state.winner ? `${sideNames[state.winner]}获胜` : `${sideNames[state.turn]}回合`);
   undoBtn.disabled = history.length === 0;
+  surrenderBtn.disabled = Boolean(state.winner);
 }
 
 function renderActions() {
@@ -239,6 +225,7 @@ function renderActions() {
     button.textContent = source.label;
     button.title = source.label;
     button.addEventListener("click", () => {
+      previewAction = null;
       selectedSourceId = source.id;
       render();
     });
@@ -262,13 +249,57 @@ function renderActions() {
   }
 
   for (const action of selectedSource.actions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "action-button";
-    button.textContent = actionLabel(action);
-    button.addEventListener("click", () => performAction(action));
-    actionsEl.append(button);
+    actionsEl.append(renderActionButton(action));
   }
+}
+
+function renderActionButton(action) {
+  const effects = getActionEffects(state, action);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action-button";
+
+  const label = document.createElement("span");
+  label.className = "action-label";
+  label.textContent = formatActionLabel(state, action);
+  button.append(label);
+
+  const tags = formatActionTags(state, action, effects);
+  if (tags.length > 0) {
+    const tagLine = document.createElement("span");
+    tagLine.className = "action-tags";
+    for (const tag of tags) {
+      const tagEl = document.createElement("span");
+      tagEl.className = `action-tag ${tag.tone === "danger" ? "danger" : "info"}`;
+      tagEl.textContent = tag.text;
+      tagLine.append(tagEl);
+    }
+    button.append(tagLine);
+  }
+
+  button.addEventListener("pointerenter", () => showActionPreview(action));
+  button.addEventListener("pointerleave", () => clearActionPreview(action));
+  button.addEventListener("mouseenter", () => showActionPreview(action));
+  button.addEventListener("mouseleave", () => clearActionPreview(action));
+  button.addEventListener("focus", () => showActionPreview(action));
+  button.addEventListener("blur", () => clearActionPreview(action));
+  button.addEventListener("pointerdown", () => showActionPreview(action));
+  button.addEventListener("pointerup", () => clearActionPreview(action));
+  button.addEventListener("pointercancel", () => clearActionPreview(action));
+  button.addEventListener("click", () => performAction(action));
+  return button;
+}
+
+function showActionPreview(action) {
+  if (previewAction === action) return;
+  previewAction = action;
+  renderBoard();
+}
+
+function clearActionPreview(action) {
+  if (previewAction !== action) return;
+  previewAction = null;
+  renderBoard();
 }
 
 function emptyLine(text) {
@@ -332,6 +363,8 @@ function render() {
 function handlePieceClick(pieceId) {
   const piece = state.pieces.find((item) => item.id === pieceId && item.alive);
   if (!piece || piece.side !== state.turn || state.winner) return;
+  warningMessage = "";
+  previewAction = null;
   selectedSourceId = null;
   selectedPieceId = selectedPieceId === pieceId ? null : pieceId;
   render();
@@ -345,14 +378,41 @@ function handleCellClick(col, row) {
 }
 
 function performAction(action) {
+  const effects = getActionEffects(state, action);
+  previewAction = null;
+  if (effects.blockedByCheck) {
+    warningMessage = "会被将军";
+    render();
+    return;
+  }
+
+  warningMessage = "";
   history.push({
     state,
     selectedPieceId,
     selectedSourceId,
     moveLog: [...moveLog],
   });
-  moveLog.push(`${sideNames[state.turn]}：${actionLabel(action)}`);
+  moveLog.push(`${sideNames[state.turn]}：${formatActionLabel(state, action)}`);
   state = applyAction(state, action);
+  selectedPieceId = null;
+  selectedSourceId = null;
+  render();
+}
+
+function surrenderGame() {
+  if (state.winner) return;
+
+  warningMessage = "";
+  previewAction = null;
+  history.push({
+    state,
+    selectedPieceId,
+    selectedSourceId,
+    moveLog: [...moveLog],
+  });
+  moveLog.push(`${sideNames[state.turn]}：投降`);
+  state = applySurrender(state);
   selectedPieceId = null;
   selectedSourceId = null;
   render();
@@ -362,6 +422,8 @@ function resetGame() {
   state = createInitialState();
   selectedPieceId = null;
   selectedSourceId = null;
+  warningMessage = "";
+  previewAction = null;
   history = [];
   moveLog = [];
   render();
@@ -373,11 +435,14 @@ function undo() {
   state = previous.state;
   selectedPieceId = previous.selectedPieceId;
   selectedSourceId = previous.selectedSourceId;
+  warningMessage = "";
+  previewAction = null;
   moveLog = previous.moveLog;
   render();
 }
 
 resetBtn.addEventListener("click", resetGame);
 undoBtn.addEventListener("click", undo);
+surrenderBtn.addEventListener("click", surrenderGame);
 
 render();

@@ -90,8 +90,14 @@ h2 {
   font-weight: 700;
 }
 
+.status.warning {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   flex: 0 0 auto;
 }
@@ -249,6 +255,49 @@ h2 {
     0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
+.piece.preview-source-piece {
+  opacity: 0.42;
+  filter: saturate(0.75);
+}
+
+.piece.preview-piece {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: 72%;
+  pointer-events: none;
+  opacity: 0.62;
+  transform: translate(-50%, -50%) scale(0.94);
+  outline: 3px solid rgba(255, 255, 255, 0.78);
+  outline-offset: -5px;
+  box-shadow:
+    0 0 0 4px rgba(46, 125, 91, 0.34),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.18),
+    0 6px 12px rgba(0, 0, 0, 0.14);
+}
+
+.preview-marker {
+  position: absolute;
+  inset: 7%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 4px;
+}
+
+.preview-capture-marker {
+  border: 3px solid rgba(178, 58, 72, 0.78);
+  background: rgba(178, 58, 72, 0.12);
+}
+
+.preview-blocked-marker {
+  border: 3px solid rgba(178, 58, 72, 0.82);
+  background:
+    linear-gradient(45deg, transparent 44%, rgba(178, 58, 72, 0.45) 45%, rgba(178, 58, 72, 0.45) 55%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, rgba(178, 58, 72, 0.45) 45%, rgba(178, 58, 72, 0.45) 55%, transparent 56%),
+    rgba(178, 58, 72, 0.1);
+}
+
 .piece.combo-member::after {
   content: "";
   position: absolute;
@@ -322,9 +371,44 @@ h2 {
 }
 
 .action-button {
+  display: grid;
+  gap: 6px;
   width: 100%;
   text-align: left;
   border-radius: 0;
+  line-height: 1.35;
+}
+
+.action-label {
+  min-width: 0;
+}
+
+.action-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.action-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.action-tag.info {
+  background: #e6f1ff;
+  color: #1f5f9f;
+}
+
+.action-tag.danger {
+  background: #fde9ed;
+  color: var(--danger);
 }
 
 .combo-line {
