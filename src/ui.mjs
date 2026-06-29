@@ -12,7 +12,9 @@ import {
   getProtectedPieceIds,
   isBlocked,
   isOwnPalace,
+  opponentOf,
 } from "./game.mjs";
+import { chooseAiAction } from "./ai.mjs";
 import {
   comboNames,
   comboSourceLabel,
@@ -25,16 +27,32 @@ import {
   sideNames,
 } from "./labels.mjs";
 
+const homeViewEl = document.querySelector("#homeView");
+const setupViewEl = document.querySelector("#setupView");
+const gameViewEl = document.querySelector("#gameView");
+const localModeBtn = document.querySelector("#localModeBtn");
+const aiModeBtn = document.querySelector("#aiModeBtn");
+const setupBackBtn = document.querySelector("#setupBackBtn");
+const chooseNorthBtn = document.querySelector("#chooseNorthBtn");
+const chooseSouthBtn = document.querySelector("#chooseSouthBtn");
 const boardEl = document.querySelector("#board");
 const statusEl = document.querySelector("#status");
+const modeLabelEl = document.querySelector("#modeLabel");
 const selectedInfoEl = document.querySelector("#selectedInfo");
 const actionsEl = document.querySelector("#actions");
 const combosEl = document.querySelector("#combos");
 const moveLogEl = document.querySelector("#moveLog");
+const homeBtn = document.querySelector("#homeBtn");
 const undoBtn = document.querySelector("#undoBtn");
 const resetBtn = document.querySelector("#resetBtn");
 const surrenderBtn = document.querySelector("#surrenderBtn");
 
+let appView = "home";
+let gameMode = "local";
+let humanSide = null;
+let aiSide = null;
+let aiThinking = false;
+let aiTimer = null;
 let state = createInitialState();
 let selectedPieceId = null;
 let selectedSourceId = null;
@@ -42,6 +60,77 @@ let history = [];
 let moveLog = [];
 let warningMessage = "";
 let previewAction = null;
+
+function setView(view) {
+  appView = view;
+  homeViewEl.classList.toggle("hidden", view !== "home");
+  setupViewEl.classList.toggle("hidden", view !== "setup");
+  gameViewEl.classList.toggle("hidden", view !== "game");
+}
+
+function clearAiTimer() {
+  if (!aiTimer) return;
+  clearTimeout(aiTimer);
+  aiTimer = null;
+}
+
+function resetMatchState() {
+  clearAiTimer();
+  state = createInitialState();
+  selectedPieceId = null;
+  selectedSourceId = null;
+  warningMessage = "";
+  previewAction = null;
+  history = [];
+  moveLog = [];
+  aiThinking = false;
+}
+
+function startLocalGame() {
+  gameMode = "local";
+  humanSide = null;
+  aiSide = null;
+  resetMatchState();
+  setView("game");
+  render();
+}
+
+function showAiSetup() {
+  clearAiTimer();
+  setView("setup");
+}
+
+function startAiGame(playerSide) {
+  gameMode = "ai";
+  humanSide = playerSide;
+  aiSide = opponentOf(playerSide);
+  resetMatchState();
+  setView("game");
+  render();
+  scheduleAiTurnIfNeeded();
+}
+
+function goHome() {
+  clearAiTimer();
+  aiThinking = false;
+  selectedPieceId = null;
+  selectedSourceId = null;
+  previewAction = null;
+  warningMessage = "";
+  setView("home");
+}
+
+function isAiGame() {
+  return gameMode === "ai";
+}
+
+function isAiTurn() {
+  return isAiGame() && !state.winner && state.turn === aiSide;
+}
+
+function isHumanTurn() {
+  return !isAiGame() || state.turn === humanSide;
+}
 
 function getSelectedPiece() {
   return state.pieces.find((piece) => piece.id === selectedPieceId && piece.alive) ?? null;
@@ -196,9 +285,16 @@ function renderBoard() {
 function renderStatus() {
   statusEl.classList.toggle("win", Boolean(state.winner));
   statusEl.classList.toggle("warning", Boolean(warningMessage));
-  statusEl.textContent = warningMessage || (state.winner ? `${sideNames[state.winner]}获胜` : `${sideNames[state.turn]}回合`);
+  modeLabelEl.textContent = isAiGame() ? `人机对抗 · 玩家：${sideNames[humanSide]}` : "本地双人";
+  statusEl.textContent =
+    warningMessage ||
+    (state.winner
+      ? `${sideNames[state.winner]}获胜`
+      : aiThinking
+        ? `${sideNames[aiSide]}思考中`
+        : `${sideNames[state.turn]}回合`);
   undoBtn.disabled = history.length === 0;
-  surrenderBtn.disabled = Boolean(state.winner);
+  surrenderBtn.disabled = Boolean(state.winner) || (isAiGame() && (aiThinking || !isHumanTurn()));
 }
 
 function renderActions() {
@@ -209,7 +305,13 @@ function renderActions() {
 
   if (!piece) {
     selectedInfoEl.textContent = "未选择";
-    actionsEl.append(emptyLine("请选择本方棋子"));
+    actionsEl.append(emptyLine(aiThinking || isAiTurn() ? "等待机器行动" : "请选择本方棋子"));
+    return;
+  }
+
+  if (aiThinking || !isHumanTurn()) {
+    selectedInfoEl.textContent = "未选择";
+    actionsEl.append(emptyLine("等待机器行动"));
     return;
   }
 
@@ -351,6 +453,7 @@ function renderMoveLog() {
 }
 
 function render() {
+  if (appView !== "game") return;
   if (selectedPieceId && !getSelectedPiece()) selectedPieceId = null;
   if (selectedSourceId && !getSelectedSource()) selectedSourceId = null;
   renderStatus();
@@ -362,7 +465,7 @@ function render() {
 
 function handlePieceClick(pieceId) {
   const piece = state.pieces.find((item) => item.id === pieceId && item.alive);
-  if (!piece || piece.side !== state.turn || state.winner) return;
+  if (!piece || piece.side !== state.turn || state.winner || aiThinking || !isHumanTurn()) return;
   warningMessage = "";
   previewAction = null;
   selectedSourceId = null;
@@ -377,7 +480,62 @@ function handleCellClick(col, row) {
   }
 }
 
+function saveHistory() {
+  history.push({
+    state,
+    selectedPieceId,
+    selectedSourceId,
+    moveLog: [...moveLog],
+  });
+}
+
+function addMoveLog(side, action) {
+  moveLog.push(`${sideNames[side]}：${formatActionLabel(state, action)}`);
+}
+
+function scheduleAiTurnIfNeeded() {
+  clearAiTimer();
+  if (!isAiTurn()) {
+    aiThinking = false;
+    return;
+  }
+
+  aiThinking = true;
+  selectedPieceId = null;
+  selectedSourceId = null;
+  previewAction = null;
+  render();
+
+  aiTimer = setTimeout(() => {
+    aiTimer = null;
+    if (appView !== "game" || !isAiTurn() || state.winner) {
+      aiThinking = false;
+      render();
+      return;
+    }
+
+    const action = chooseAiAction(state, aiSide);
+    aiThinking = false;
+    if (!action) {
+      warningMessage = "机器无可用行动";
+      render();
+      return;
+    }
+
+    saveHistory();
+    addMoveLog(state.turn, action);
+    state = applyAction(state, action);
+    selectedPieceId = null;
+    selectedSourceId = null;
+    previewAction = null;
+    warningMessage = "";
+    render();
+  }, 420);
+}
+
 function performAction(action) {
+  if (aiThinking || !isHumanTurn()) return;
+
   const effects = getActionEffects(state, action);
   previewAction = null;
   if (effects.blockedByCheck) {
@@ -387,62 +545,71 @@ function performAction(action) {
   }
 
   warningMessage = "";
-  history.push({
-    state,
-    selectedPieceId,
-    selectedSourceId,
-    moveLog: [...moveLog],
-  });
-  moveLog.push(`${sideNames[state.turn]}：${formatActionLabel(state, action)}`);
+  saveHistory();
+  addMoveLog(state.turn, action);
   state = applyAction(state, action);
   selectedPieceId = null;
   selectedSourceId = null;
   render();
+  scheduleAiTurnIfNeeded();
 }
 
 function surrenderGame() {
   if (state.winner) return;
+  if (isAiGame() && (aiThinking || !isHumanTurn())) return;
 
+  clearAiTimer();
+  const surrenderSide = isAiGame() ? humanSide : state.turn;
   warningMessage = "";
   previewAction = null;
-  history.push({
-    state,
-    selectedPieceId,
-    selectedSourceId,
-    moveLog: [...moveLog],
-  });
-  moveLog.push(`${sideNames[state.turn]}：投降`);
-  state = applySurrender(state);
+  aiThinking = false;
+  saveHistory();
+  moveLog.push(`${sideNames[surrenderSide]}：投降`);
+  state = applySurrender(state, surrenderSide);
   selectedPieceId = null;
   selectedSourceId = null;
   render();
 }
 
 function resetGame() {
-  state = createInitialState();
-  selectedPieceId = null;
-  selectedSourceId = null;
-  warningMessage = "";
-  previewAction = null;
-  history = [];
-  moveLog = [];
+  resetMatchState();
   render();
+  scheduleAiTurnIfNeeded();
 }
 
 function undo() {
-  const previous = history.pop();
+  clearAiTimer();
+  aiThinking = false;
+  let previous = history.pop();
   if (!previous) return;
+
   state = previous.state;
   selectedPieceId = previous.selectedPieceId;
   selectedSourceId = previous.selectedSourceId;
   warningMessage = "";
   previewAction = null;
   moveLog = previous.moveLog;
+
+  if (isAiGame() && state.turn === aiSide && history.length > 0) {
+    previous = history.pop();
+    state = previous.state;
+    selectedPieceId = previous.selectedPieceId;
+    selectedSourceId = previous.selectedSourceId;
+    moveLog = previous.moveLog;
+  }
+
   render();
+  scheduleAiTurnIfNeeded();
 }
 
+localModeBtn.addEventListener("click", startLocalGame);
+aiModeBtn.addEventListener("click", showAiSetup);
+setupBackBtn.addEventListener("click", goHome);
+chooseNorthBtn.addEventListener("click", () => startAiGame("north"));
+chooseSouthBtn.addEventListener("click", () => startAiGame("south"));
+homeBtn.addEventListener("click", goHome);
 resetBtn.addEventListener("click", resetGame);
 undoBtn.addEventListener("click", undo);
 surrenderBtn.addEventListener("click", surrenderGame);
 
-render();
+setView("home");

@@ -38,6 +38,75 @@ button {
   font: inherit;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.home-screen,
+.setup-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.home-panel {
+  width: min(100%, 760px);
+}
+
+.home-panel h1 {
+  margin-bottom: 22px;
+  font-size: 42px;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mode-grid.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mode-button {
+  min-height: 128px;
+  border: 2px solid #26323a;
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+}
+
+.mode-button:hover {
+  transform: translateY(-2px);
+}
+
+.mode-button.local-mode {
+  background: linear-gradient(135deg, #b4463d, #7d2722);
+}
+
+.mode-button.ai-mode {
+  background: linear-gradient(135deg, #1f6f78, #124b52);
+}
+
+.mode-button.online-mode {
+  background: linear-gradient(135deg, #6b7280, #35404a);
+  cursor: default;
+  opacity: 0.72;
+}
+
+.plain-button {
+  margin-top: 16px;
+  border: 1px solid #b8c2c9;
+  background: #fff;
+  color: var(--ink);
+  min-height: 38px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
 .app {
   display: grid;
   grid-template-columns: minmax(360px, 560px) minmax(280px, 360px);
@@ -83,6 +152,13 @@ h2 {
   margin-top: 6px;
   color: var(--muted);
   font-size: 15px;
+}
+
+.mode-label {
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .status.win {
@@ -455,6 +531,11 @@ h2 {
     padding: 16px;
   }
 
+  .mode-grid,
+  .mode-grid.two-column {
+    grid-template-columns: 1fr;
+  }
+
   .board {
     width: min(100%, 460px);
     margin: 0 auto;
@@ -480,5 +561,14 @@ h2 {
 
   .piece {
     font-size: 17px;
+  }
+
+  .home-panel h1 {
+    font-size: 34px;
+  }
+
+  .mode-button {
+    min-height: 92px;
+    font-size: 22px;
   }
 }

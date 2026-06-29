@@ -8,14 +8,38 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app">
+    <main id="homeView" class="home-screen" aria-label="模式选择">
+      <section class="home-panel">
+        <h1>布匿棋</h1>
+        <div class="mode-grid">
+          <button id="localModeBtn" class="mode-button local-mode" type="button">本地双人</button>
+          <button id="aiModeBtn" class="mode-button ai-mode" type="button">人机对抗</button>
+          <button id="onlineModeBtn" class="mode-button online-mode" type="button" aria-disabled="true">在线模式</button>
+        </div>
+      </section>
+    </main>
+
+    <main id="setupView" class="setup-screen hidden" aria-label="人机阵营选择">
+      <section class="home-panel">
+        <h1>选择阵营</h1>
+        <div class="mode-grid two-column">
+          <button id="chooseNorthBtn" class="mode-button local-mode" type="button">罗马共和国</button>
+          <button id="chooseSouthBtn" class="mode-button ai-mode" type="button">迦太基</button>
+        </div>
+        <button id="setupBackBtn" class="plain-button" type="button">返回首页</button>
+      </section>
+    </main>
+
+    <main id="gameView" class="app hidden">
       <section class="play-area" aria-label="棋盘">
         <div class="topbar">
           <div>
             <h1>布匿棋</h1>
+            <p id="modeLabel" class="mode-label">本地双人</p>
             <p id="status" class="status">罗马共和国回合</p>
           </div>
           <div class="controls" aria-label="对局控制">
+            <button id="homeBtn" type="button" title="返回首页">首页</button>
             <button id="undoBtn" type="button" title="撤销上一步">撤销</button>
             <button id="surrenderBtn" type="button" title="当前方投降">投降</button>
             <button id="resetBtn" type="button" title="重新开始">重开</button>
