@@ -15,6 +15,9 @@ import {
   opponentOf,
 } from "./game.mjs";
 import { chooseAiAction } from "./ai.mjs";
+import { loadGameConfig } from "./config.mjs";
+import { loadBoardGamesCoreClient } from "./online-core-loader.mjs";
+import { seatedPeers, sideForPeer } from "./online-seats.mjs";
 import {
   comboNames,
   comboSourceLabel,
@@ -29,12 +32,20 @@ import {
 
 const homeViewEl = document.querySelector("#homeView");
 const setupViewEl = document.querySelector("#setupView");
+const onlineViewEl = document.querySelector("#onlineView");
 const gameViewEl = document.querySelector("#gameView");
 const localModeBtn = document.querySelector("#localModeBtn");
 const aiModeBtn = document.querySelector("#aiModeBtn");
+const onlineModeBtn = document.querySelector("#onlineModeBtn");
 const setupBackBtn = document.querySelector("#setupBackBtn");
 const chooseNorthBtn = document.querySelector("#chooseNorthBtn");
 const chooseSouthBtn = document.querySelector("#chooseSouthBtn");
+const onlineBackBtn = document.querySelector("#onlineBackBtn");
+const createOnlineRoomBtn = document.querySelector("#createOnlineRoomBtn");
+const joinOnlineRoomBtn = document.querySelector("#joinOnlineRoomBtn");
+const onlineNameInput = document.querySelector("#onlineNameInput");
+const roomCodeInput = document.querySelector("#roomCodeInput");
+const onlineStatusEl = document.querySelector("#onlineStatus");
 const boardEl = document.querySelector("#board");
 const statusEl = document.querySelector("#status");
 const modeLabelEl = document.querySelector("#modeLabel");
@@ -53,6 +64,11 @@ let humanSide = null;
 let aiSide = null;
 let aiThinking = false;
 let aiTimer = null;
+let onlineClient = null;
+let onlineSide = null;
+let onlineRoom = null;
+let onlineConnected = false;
+let onlineOpenPeerIds = new Set();
 let state = createInitialState();
 let selectedPieceId = null;
 let selectedSourceId = null;
@@ -60,11 +76,21 @@ let history = [];
 let moveLog = [];
 let warningMessage = "";
 let previewAction = null;
+let gameConfig = null;
+let gameConfigError = null;
+let boardGamesCoreClientClass = null;
+
+try {
+  gameConfig = await loadGameConfig();
+} catch (error) {
+  gameConfigError = error;
+}
 
 function setView(view) {
   appView = view;
   homeViewEl.classList.toggle("hidden", view !== "home");
   setupViewEl.classList.toggle("hidden", view !== "setup");
+  onlineViewEl.classList.toggle("hidden", view !== "online");
   gameViewEl.classList.toggle("hidden", view !== "game");
 }
 
@@ -86,7 +112,17 @@ function resetMatchState() {
   aiThinking = false;
 }
 
+function cleanupOnlineClient() {
+  onlineClient?.close();
+  onlineClient = null;
+  onlineSide = null;
+  onlineRoom = null;
+  onlineConnected = false;
+  onlineOpenPeerIds = new Set();
+}
+
 function startLocalGame() {
+  cleanupOnlineClient();
   gameMode = "local";
   humanSide = null;
   aiSide = null;
@@ -96,11 +132,25 @@ function startLocalGame() {
 }
 
 function showAiSetup() {
+  cleanupOnlineClient();
   clearAiTimer();
   setView("setup");
 }
 
+function showOnlineSetup() {
+  clearAiTimer();
+  cleanupOnlineClient();
+  const onlineAvailable = Boolean(getSignalingUrl());
+  createOnlineRoomBtn.disabled = !onlineAvailable;
+  joinOnlineRoomBtn.disabled = !onlineAvailable;
+  onlineStatusEl.textContent = onlineAvailable
+    ? "创建或加入一个私有朋友局。"
+    : `在线配置不可用：${gameConfigError?.message ?? "缺少信令地址"}`;
+  setView("online");
+}
+
 function startAiGame(playerSide) {
+  cleanupOnlineClient();
   gameMode = "ai";
   humanSide = playerSide;
   aiSide = opponentOf(playerSide);
@@ -112,6 +162,7 @@ function startAiGame(playerSide) {
 
 function goHome() {
   clearAiTimer();
+  cleanupOnlineClient();
   aiThinking = false;
   selectedPieceId = null;
   selectedSourceId = null;
@@ -124,12 +175,205 @@ function isAiGame() {
   return gameMode === "ai";
 }
 
+function isOnlineGame() {
+  return gameMode === "online";
+}
+
+function getSignalingUrl() {
+  return gameConfig?.online?.signalingUrl ?? "";
+}
+
+async function getBoardGamesCoreClientClass() {
+  if (!boardGamesCoreClientClass) {
+    boardGamesCoreClientClass = await loadBoardGamesCoreClient({ gameConfig });
+  }
+  return boardGamesCoreClientClass;
+}
+
+function connectedOnlinePlayers() {
+  return seatedPeers(onlineRoom);
+}
+
+function hasOpenChannelsToOnlinePlayers() {
+  return connectedOnlinePlayers()
+    .filter((peer) => peer.id !== onlineClient?.peerId)
+    .every((peer) => onlineOpenPeerIds.has(peer.id));
+}
+
+function onlineWaitMessage() {
+  if (!isOnlineGame()) return "";
+  if (connectedOnlinePlayers().length < 2) return "等待对手加入";
+  if (!hasOpenChannelsToOnlinePlayers()) return "正在建立P2P连接";
+  return "";
+}
+
+function isOnlineReady() {
+  return isOnlineGame() && !onlineWaitMessage();
+}
+
 function isAiTurn() {
   return isAiGame() && !state.winner && state.turn === aiSide;
 }
 
 function isHumanTurn() {
+  if (isOnlineGame()) return onlineConnected && isOnlineReady() && state.turn === onlineSide;
   return !isAiGame() || state.turn === humanSide;
+}
+
+function onlineSnapshot() {
+  return {
+    state,
+    moveLog: [...moveLog],
+  };
+}
+
+function restoreOnlineSnapshot(snapshot) {
+  if (!snapshot?.state) return;
+  state = snapshot.state;
+  moveLog = [...(snapshot.moveLog ?? [])];
+  selectedPieceId = null;
+  selectedSourceId = null;
+  previewAction = null;
+  warningMessage = "";
+  render();
+}
+
+function attachOnlineClient(client) {
+  onlineClient = client;
+  client.setSnapshotProvider(onlineSnapshot);
+
+  client.addEventListener("room-created", (event) => adoptOnlineRoom(event.detail.room));
+  client.addEventListener("room-joined", (event) => adoptOnlineRoom(event.detail.room));
+  client.addEventListener("room-resumed", (event) => adoptOnlineRoom(event.detail.room));
+  client.addEventListener("peer-joined", (event) => {
+    adoptOnlineRoom(event.detail.room);
+    warningMessage = "对手已加入";
+    render();
+  });
+  client.addEventListener("peer-left", (event) => {
+    onlineOpenPeerIds.delete(event.detail.peerId);
+    if (event.detail.room) adoptOnlineRoom(event.detail.room);
+    warningMessage = `玩家掉线：${event.detail.peerId}`;
+    render();
+  });
+  client.addEventListener("peer-channel-open", (event) => {
+    onlineOpenPeerIds.add(event.detail.peerId);
+    warningMessage = "";
+    render();
+  });
+  client.addEventListener("peer-channel-close", (event) => {
+    onlineOpenPeerIds.delete(event.detail.peerId);
+    warningMessage = "P2P连接已断开";
+    render();
+  });
+  client.addEventListener("host-changed", (event) => {
+    if (event.detail.room) adoptOnlineRoom(event.detail.room);
+    warningMessage = client.isHost ? "你已接管房间" : "房主已迁移";
+    render();
+  });
+  client.addEventListener("snapshot", (event) => restoreOnlineSnapshot(event.detail.snapshot));
+  client.addEventListener("game-message", (event) => handleOnlineGameMessage(event.detail.envelope));
+  client.addEventListener("core-error", (event) => {
+    onlineStatusEl.textContent = event.detail.message ?? "在线连接出错";
+    warningMessage = event.detail.message ?? "";
+    render();
+  });
+}
+
+function adoptOnlineRoom(room) {
+  onlineRoom = room;
+  onlineSide = sideForPeer(room, onlineClient.peerId);
+  onlineConnected = Boolean(onlineSide);
+  const connectedIds = new Set((room.peers ?? []).filter((peer) => peer.connected !== false).map((peer) => peer.id));
+  onlineOpenPeerIds = new Set([...onlineOpenPeerIds].filter((peerId) => connectedIds.has(peerId)));
+  const sideText = onlineSide ? sideNames[onlineSide] : "未入座";
+  onlineStatusEl.textContent = `房间 ${room.code} · 你是 ${sideText}`;
+}
+
+async function createOnlineRoom() {
+  const signalingUrl = getSignalingUrl();
+  if (!signalingUrl) {
+    onlineStatusEl.textContent = `在线配置不可用：${gameConfigError?.message ?? "缺少信令地址"}`;
+    return;
+  }
+  gameMode = "online";
+  resetMatchState();
+  try {
+    const BoardGamesCoreClient = await getBoardGamesCoreClientClass();
+    const client = new BoardGamesCoreClient({
+      signalingUrl,
+      gameId: "punic-chess",
+      maxPeers: 2,
+    });
+    attachOnlineClient(client);
+    const result = await client.createRoom({
+      displayName: onlineNameInput.value.trim() || "Player",
+      maxPeers: 2,
+    });
+    adoptOnlineRoom(result.room);
+    roomCodeInput.value = result.room.code;
+    setView("game");
+    render();
+  } catch (error) {
+    onlineStatusEl.textContent = error.message;
+  }
+}
+
+async function joinOnlineRoom() {
+  const signalingUrl = getSignalingUrl();
+  if (!signalingUrl) {
+    onlineStatusEl.textContent = `在线配置不可用：${gameConfigError?.message ?? "缺少信令地址"}`;
+    return;
+  }
+  gameMode = "online";
+  resetMatchState();
+  try {
+    const BoardGamesCoreClient = await getBoardGamesCoreClientClass();
+    const client = new BoardGamesCoreClient({
+      signalingUrl,
+      gameId: "punic-chess",
+      maxPeers: 2,
+    });
+    attachOnlineClient(client);
+    const result = await client.joinRoom({
+      roomCode: roomCodeInput.value.trim(),
+      displayName: onlineNameInput.value.trim() || "Player",
+    });
+    adoptOnlineRoom(result.room);
+    setView("game");
+    render();
+  } catch (error) {
+    onlineStatusEl.textContent = error.message;
+  }
+}
+
+function handleOnlineGameMessage(envelope) {
+  if (envelope.type === "game-action") {
+    const action = envelope.payload?.action;
+    if (!action) return;
+    addMoveLog(state.turn, action);
+    state = applyAction(state, action);
+    selectedPieceId = null;
+    selectedSourceId = null;
+    previewAction = null;
+    warningMessage = "";
+    render();
+    return;
+  }
+
+  if (envelope.type === "game-surrender") {
+    const side = envelope.payload?.side;
+    if (!side) return;
+    moveLog.push(`${sideNames[side]}：投降`);
+    state = applySurrender(state, side);
+    warningMessage = "";
+    render();
+    return;
+  }
+
+  if (envelope.type === "game-reset") {
+    restoreOnlineSnapshot(envelope.payload?.snapshot);
+  }
 }
 
 function getSelectedPiece() {
@@ -286,15 +530,23 @@ function renderStatus() {
   statusEl.classList.toggle("win", Boolean(state.winner));
   statusEl.classList.toggle("warning", Boolean(warningMessage));
   modeLabelEl.textContent = isAiGame() ? `人机对抗 · 玩家：${sideNames[humanSide]}` : "本地双人";
+  if (isOnlineGame()) {
+    const roomText = onlineRoom ? `房间：${onlineRoom.code}` : "连接中";
+    const sideText = onlineSide ? `你是：${sideNames[onlineSide]}` : "未入座";
+    modeLabelEl.textContent = `在线模式 · ${sideText} · ${roomText}`;
+  }
   statusEl.textContent =
     warningMessage ||
     (state.winner
       ? `${sideNames[state.winner]}获胜`
+      : isOnlineGame() && !isOnlineReady()
+        ? onlineWaitMessage()
       : aiThinking
         ? `${sideNames[aiSide]}思考中`
         : `${sideNames[state.turn]}回合`);
-  undoBtn.disabled = history.length === 0;
-  surrenderBtn.disabled = Boolean(state.winner) || (isAiGame() && (aiThinking || !isHumanTurn()));
+  undoBtn.disabled = isOnlineGame() || history.length === 0;
+  resetBtn.disabled = isOnlineGame() && !onlineClient?.isHost;
+  surrenderBtn.disabled = Boolean(state.winner) || (isAiGame() && (aiThinking || !isHumanTurn())) || (isOnlineGame() && !isHumanTurn());
 }
 
 function renderActions() {
@@ -305,13 +557,13 @@ function renderActions() {
 
   if (!piece) {
     selectedInfoEl.textContent = "未选择";
-    actionsEl.append(emptyLine(aiThinking || isAiTurn() ? "等待机器行动" : "请选择本方棋子"));
+    actionsEl.append(emptyLine(getActionEmptyText()));
     return;
   }
 
   if (aiThinking || !isHumanTurn()) {
     selectedInfoEl.textContent = "未选择";
-    actionsEl.append(emptyLine("等待机器行动"));
+    actionsEl.append(emptyLine(getActionEmptyText()));
     return;
   }
 
@@ -409,6 +661,13 @@ function emptyLine(text) {
   line.className = "empty-state";
   line.textContent = text;
   return line;
+}
+
+function getActionEmptyText() {
+  if (isOnlineGame() && !isOnlineReady()) return onlineWaitMessage();
+  if (isOnlineGame() && !isHumanTurn()) return "等待对手行动";
+  if (aiThinking || isAiTurn()) return "等待机器行动";
+  return "请选择本方棋子";
 }
 
 function renderCombinations() {
@@ -533,7 +792,7 @@ function scheduleAiTurnIfNeeded() {
   }, 420);
 }
 
-function performAction(action) {
+function performAction(action, { remote = false } = {}) {
   if (aiThinking || !isHumanTurn()) return;
 
   const effects = getActionEffects(state, action);
@@ -548,6 +807,9 @@ function performAction(action) {
   saveHistory();
   addMoveLog(state.turn, action);
   state = applyAction(state, action);
+  if (isOnlineGame() && !remote) {
+    onlineClient?.sendGameAction(action);
+  }
   selectedPieceId = null;
   selectedSourceId = null;
   render();
@@ -557,6 +819,7 @@ function performAction(action) {
 function surrenderGame() {
   if (state.winner) return;
   if (isAiGame() && (aiThinking || !isHumanTurn())) return;
+  if (isOnlineGame() && !isHumanTurn()) return;
 
   clearAiTimer();
   const surrenderSide = isAiGame() ? humanSide : state.turn;
@@ -566,13 +829,21 @@ function surrenderGame() {
   saveHistory();
   moveLog.push(`${sideNames[surrenderSide]}：投降`);
   state = applySurrender(state, surrenderSide);
+  if (isOnlineGame()) {
+    onlineClient?.sendGameMessage("game-surrender", { side: surrenderSide });
+  }
   selectedPieceId = null;
   selectedSourceId = null;
   render();
 }
 
 function resetGame() {
+  if (isOnlineGame() && !onlineClient?.isHost) return;
   resetMatchState();
+  if (isOnlineGame()) {
+    gameMode = "online";
+    onlineClient?.sendGameMessage("game-reset", { snapshot: onlineSnapshot() });
+  }
   render();
   scheduleAiTurnIfNeeded();
 }
@@ -604,9 +875,13 @@ function undo() {
 
 localModeBtn.addEventListener("click", startLocalGame);
 aiModeBtn.addEventListener("click", showAiSetup);
+onlineModeBtn.addEventListener("click", showOnlineSetup);
 setupBackBtn.addEventListener("click", goHome);
 chooseNorthBtn.addEventListener("click", () => startAiGame("north"));
 chooseSouthBtn.addEventListener("click", () => startAiGame("south"));
+onlineBackBtn.addEventListener("click", goHome);
+createOnlineRoomBtn.addEventListener("click", () => void createOnlineRoom());
+joinOnlineRoomBtn.addEventListener("click", () => void joinOnlineRoom());
 homeBtn.addEventListener("click", goHome);
 resetBtn.addEventListener("click", resetGame);
 undoBtn.addEventListener("click", undo);

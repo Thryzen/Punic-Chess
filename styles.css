@@ -69,6 +69,46 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.online-panel {
+  width: min(100%, 520px);
+}
+
+.field-label {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: left;
+}
+
+.text-input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #b8c2c9;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.text-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(46, 125, 91, 0.18);
+}
+
+.online-actions {
+  display: grid;
+  margin-top: 12px;
+}
+
+.online-status {
+  min-height: 24px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .mode-button {
   min-height: 128px;
   border: 2px solid #26323a;
@@ -93,8 +133,6 @@ button {
 
 .mode-button.online-mode {
   background: linear-gradient(135deg, #6b7280, #35404a);
-  cursor: default;
-  opacity: 0.72;
 }
 
 .plain-button {

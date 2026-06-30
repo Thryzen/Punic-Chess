@@ -14,7 +14,7 @@
         <div class="mode-grid">
           <button id="localModeBtn" class="mode-button local-mode" type="button">本地双人</button>
           <button id="aiModeBtn" class="mode-button ai-mode" type="button">人机对抗</button>
-          <button id="onlineModeBtn" class="mode-button online-mode" type="button" aria-disabled="true">在线模式</button>
+          <button id="onlineModeBtn" class="mode-button online-mode" type="button">在线模式</button>
         </div>
       </section>
     </main>
@@ -27,6 +27,28 @@
           <button id="chooseSouthBtn" class="mode-button ai-mode" type="button">迦太基</button>
         </div>
         <button id="setupBackBtn" class="plain-button" type="button">返回首页</button>
+      </section>
+    </main>
+
+    <main id="onlineView" class="setup-screen hidden" aria-label="在线房间">
+      <section class="home-panel online-panel">
+        <h1>在线模式</h1>
+        <label class="field-label">
+          玩家名
+          <input id="onlineNameInput" class="text-input" type="text" value="Player" maxlength="24" />
+        </label>
+        <div class="online-actions">
+          <button id="createOnlineRoomBtn" class="mode-button local-mode" type="button">创建房间</button>
+        </div>
+        <label class="field-label">
+          房间码
+          <input id="roomCodeInput" class="text-input" type="text" placeholder="输入房间码" maxlength="12" />
+        </label>
+        <div class="online-actions">
+          <button id="joinOnlineRoomBtn" class="mode-button ai-mode" type="button">加入房间</button>
+        </div>
+        <p id="onlineStatus" class="online-status">创建或加入一个私有朋友局。</p>
+        <button id="onlineBackBtn" class="plain-button" type="button">返回首页</button>
       </section>
     </main>
 

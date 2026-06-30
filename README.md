@@ -1,57 +1,239 @@
-# 布匿棋 (Punic Chess)
+# Punic Chess
 
-布匿战争主题的纯前端双人对弈游戏，使用 HTML、CSS、原生 JavaScript 实现。规则来自原文章，并按确认规则实现：攻城车组合必须由车兵和对应己方兵全部进入对方宫殿才获胜。
+An original strategy board game inspired by the Punic Wars, now playable in the browser.
 
-## 背景设定
+Punic Chess is a tactical, formation-driven chess-like game set in an abstract battlefield between the Roman Republic and Carthage. Unlike traditional chess, victory does not come only from a single decisive capture. You must coordinate units, build protected formations, escort siege forces, break palace defenses, and decide when a sacrifice is worth one more square of progress.
 
-棋局的一方代表罗马共和国，一方代表迦太基。罗马以元老院、执政官和军团秩序为核心，擅长稳固阵线、层层推进；迦太基依托港口、贸易网络和盟邦兵源，擅长机动包围、远征奇袭。棋盘不是具体地图，而是西地中海战场的抽象：两端的宫殿象征各自政治与军事中枢，中间的空地象征海峡、岛屿、补给线与前线据点交错的拉锯地带。
+Play locally with a friend, challenge the built-in AI, or create an online room for remote two-player battles.
 
-在这场改写后的布匿战争里，胜利并不只属于单个英雄。王与后象征国家意志和战略判断，卫守住宫殿的最后边界，车兵代表可以撕开防线的重装推进，黄兵和兵则组成护卫、渗透与协同的战术网络。真正强大的不是孤子突进，而是几枚棋子在同一片战场上形成配合。
+## Why Punic Chess?
 
-## 小故事
+Punic Chess is about cooperation between pieces.
 
-战争进入僵持阶段后，罗马与迦太基都发现，单纯夺下一座城并不能结束战争。港口可以重建，盟约可以更替，战线也会在一次失败后重新闭合。于是双方都把目标转向对手的中枢：只要突破宫殿，迫使对方的指挥系统崩溃，整片战场就会随之倾斜。
+A lone queen may dominate open space. A chariot may tear through ranks. A soldier may look weak on its own. But the real power of the game appears when pieces move as a formation: chariots become protected siege engines, yellow soldiers become untouchable escorts, and ordinary soldiers turn into the key link that holds an army together.
 
-罗马指挥官命令军团稳步压上，用严整队列保护攻城车前进；迦太基统帅则调动各路部队，在侧翼寻找缝隙，试图以更灵活的组合拖垮对手。每一次移动都像一次战前会议后的命令：有人必须牵制，有人必须护送，有人必须用自己的退场换来一格关键位置。
+Every move asks a strategic question:
 
-当攻城车和护卫兵同时踏入敌方宫殿时，城门不再只是被撞开，而是整套防线已经被连根拔起。那一刻，胜负不只是一次冲锋的结果，而是一整场协同战争的落点。
+- Should you advance your siege formation or protect your king?
+- Should you sacrifice a guard to permanently seal a square?
+- Should you break formation for a quick attack, or preserve protection for the long war?
+- Can you force your opponent to defend the palace while your own army regroups?
 
-## 为什么需要本地服务
+This is not just chess with new pieces. It is a small war system built around formation, protection, sacrifice, and breakthrough.
 
-页面使用了 JavaScript ES module：
+## Features
 
-```html
-<script type="module" src="./src/ui.mjs"></script>
+- Local two-player mode: play on the same device with a friend.
+- Human vs AI mode: choose a side and test your strategy against the built-in computer opponent.
+- Online two-player mode: create or join a private room and play remotely with another player.
+- Pure web implementation: built with HTML, CSS, and native JavaScript modules.
+- No framework required: lightweight, easy to read, easy to host, and easy to modify.
+- Move log and action panel: see available actions, selected piece information, formations, and game history.
+- Original formation mechanics: siege formations, special-force formations, protected pieces, group movement, guard clashes, blocked squares, and palace breakthrough rules.
+
+## Game Overview
+
+The board is a 6 x 10 grid. Each side owns a 4 x 3 palace at one end of the board.
+
+The two factions are:
+
+- Rome, advancing from the north.
+- Carthage, advancing from the south.
+
+Each army contains:
+
+- King, the core of the army.
+- Queen, the strongest mobile piece.
+- Guard, a defensive piece that can sacrifice itself and block a square.
+- Chariot, a powerful straight-line attacker.
+- Yellow Soldier, a flexible short-range unit.
+- Soldier, a forward-moving infantry unit and the backbone of formations.
+
+## Core Rules
+
+### King
+
+The king moves one square in any direction, but only inside its own palace.
+
+If your king is captured, you lose.
+
+### Queen
+
+The queen moves any number of squares in any direction.
+
+### Guard
+
+The guard moves one square in any direction inside its own palace.
+
+When a guard captures or is captured, both pieces are removed from the board, and that square becomes permanently blocked.
+
+### Chariot
+
+The chariot moves any number of squares horizontally or vertically.
+
+### Yellow Soldier
+
+The yellow soldier moves one square in any direction.
+
+### Soldier
+
+The soldier moves one square forward.
+
+## Formations
+
+Formations are the heart of Punic Chess.
+
+A piece inside a valid formation may gain protection, new tactical options, or the ability to move together with the group.
+
+### Siege Formation
+
+A chariot and a friendly soldier form a siege formation when they are adjacent.
+
+The chariot is protected.
+
+If the complete siege formation enters the opponent's palace, that side wins.
+
+### Special-Force Formation
+
+A soldier and two friendly yellow soldiers form a special-force formation when all three pieces fit within a 3 x 3 area.
+
+The two yellow soldiers are protected.
+
+### Three-Arms Formation
+
+A chariot, a yellow soldier, and a soldier form a three-arms formation when all three pieces fit within a 3 x 3 area.
+
+The chariot and yellow soldier are protected.
+
+### Protected Pieces
+
+Protected pieces cannot be captured.
+
+This creates the main tactical tension of the game: you are not only attacking pieces, but also attacking the structure that makes them safe. A protected chariot may be impossible to take directly, but if you break its formation, it becomes vulnerable again.
+
+## Victory Conditions
+
+You win by either:
+
+- Capturing the opponent's king.
+- Moving a complete siege formation into the opponent's palace.
+
+The second condition is what gives Punic Chess its identity. Sometimes the fastest way to win is not to hunt the king, but to escort a siege group deep into enemy territory.
+
+## Getting Started
+
+Clone the repository:
+
+```bash
+git clone https://github.com/Thryzen/Punic-Chess.git
+cd Punic-Chess
 ```
 
-很多浏览器直接用 `file://` 打开时会对模块、相对导入、资源加载有额外限制。用本地 HTTP 服务打开更稳定，也方便浏览器调试和自动化验证。
+Start a local HTTP server:
 
-## 启动游戏
-
-在项目根目录中运行：
-
-```powershell
+```bash
 python -m http.server 8765 --bind 127.0.0.1
 ```
 
-然后在浏览器打开：
+Then open:
 
 ```text
 http://127.0.0.1:8765/
 ```
 
-停止服务：回到启动服务的 PowerShell 窗口，按 `Ctrl+C`。
+To stop the server, return to the terminal window and press `Ctrl+C`.
 
-## 如果端口被占用
+## If the Port Is Already in Use
 
-把 `8765` 换成其他端口，例如：
+Use another port, for example:
 
-```powershell
+```bash
 python -m http.server 8770 --bind 127.0.0.1
 ```
 
-然后打开：
+Then open:
 
 ```text
 http://127.0.0.1:8770/
 ```
+
+## Project Structure
+
+```text
+Punic-Chess/
+├── index.html
+├── styles.css
+├── game.config.json
+├── README.md
+└── src/
+    ├── ai.mjs
+    ├── config.mjs
+    ├── game.mjs
+    ├── labels.mjs
+    ├── online-core-loader.mjs
+    ├── online-seats.mjs
+    └── ui.mjs
+```
+
+## Online Mode
+
+Online play uses a signaling service so two remote players can share room state and moves. The online layer is powered by [Board Games Core](https://github.com/Thryzen/Board-Game-Core), a reusable P2P-first friend-room core for board games.
+
+When deploying your own instance, make sure the frontend points to your own secure WebSocket endpoint in `game.config.json`, for example:
+
+```text
+wss://your-domain.example/ws
+```
+
+If your site is served over HTTPS, the online service should also use `wss://` rather than `ws://`; otherwise browsers may block the connection as mixed content.
+
+## Design Philosophy
+
+Punic Chess was designed around one simple idea:
+
+A battlefield is not won by isolated heroes, but by coordinated forces.
+
+The pieces are intentionally asymmetric in role. Some are individually powerful. Some are fragile but essential. Some exist mainly to protect, escort, block, or enable others.
+
+A good player must think in layers:
+
+- material advantage,
+- palace defense,
+- formation integrity,
+- protected targets,
+- siege pressure,
+- sacrifice value,
+- long-term board control.
+
+The result is a compact strategy game where every formation tells a story.
+
+## Development Notes
+
+This project uses native browser technologies only:
+
+- HTML
+- CSS
+- JavaScript ES modules
+
+Because the game uses ES modules, opening `index.html` directly through `file://` may not work reliably in all browsers. Running a small local HTTP server is recommended.
+
+## Contributing
+
+Contributions are welcome.
+
+Good places to start:
+
+- Improve the UI/UX.
+- Add rule explanations or tutorials.
+- Strengthen online play reliability.
+- Improve the AI.
+- Add tests for move generation and win conditions.
+- Translate the interface.
+
+Before making large changes, please open an issue or discussion so the design can stay consistent with the original rule system.
+
+## Acknowledgements
+
+The boundless imagination of our childhood.
+
+May your siege engines reach the palace, and may your formations hold.
