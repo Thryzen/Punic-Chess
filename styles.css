@@ -548,6 +548,126 @@ h2 {
   white-space: nowrap;
 }
 
+.social-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.social-notice {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.social-flash {
+  display: grid;
+  gap: 6px;
+  min-height: 42px;
+  border: 1px solid #d6dee4;
+  background: #f8fbfa;
+  padding: 9px;
+  font-size: 13px;
+}
+
+.social-flash-name {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.social-flash-text {
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.social-flash-emoji {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.social-flash-emoji img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.social-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.social-tab {
+  min-height: 34px;
+  border: 1px solid #b8c2c9;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.social-tab.active {
+  border-color: var(--accent);
+  background: #e6f2ed;
+  color: #174935;
+}
+
+.social-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.social-tray {
+  display: grid;
+}
+
+.social-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.emoji-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.social-button {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #b8c2c9;
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.social-button:hover {
+  border-color: var(--accent);
+}
+
+.social-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.emoji-button {
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  padding: 6px;
+}
+
+.emoji-button img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .move-log {
   display: grid;
   gap: 6px;

@@ -18,6 +18,7 @@ import { chooseAiAction } from "./ai.mjs";
 import { loadGameConfig } from "./config.mjs";
 import { loadBoardGamesCoreClient } from "./online-core-loader.mjs";
 import { seatedPeers, sideForPeer } from "./online-seats.mjs";
+import { createSocialEntry } from "./online-social.mjs";
 import {
   comboNames,
   comboSourceLabel,
@@ -52,6 +53,13 @@ const modeLabelEl = document.querySelector("#modeLabel");
 const selectedInfoEl = document.querySelector("#selectedInfo");
 const actionsEl = document.querySelector("#actions");
 const combosEl = document.querySelector("#combos");
+const onlineSocialPanelEl = document.querySelector("#onlineSocialPanel");
+const socialNoticeEl = document.querySelector("#socialNotice");
+const socialFlashEl = document.querySelector("#socialFlash");
+const socialPhraseToggleBtn = document.querySelector("#socialPhraseToggle");
+const socialEmojiToggleBtn = document.querySelector("#socialEmojiToggle");
+const socialTrayEl = document.querySelector("#socialTray");
+const socialTrayActionsEl = document.querySelector("#socialTrayActions");
 const moveLogEl = document.querySelector("#moveLog");
 const homeBtn = document.querySelector("#homeBtn");
 const undoBtn = document.querySelector("#undoBtn");
@@ -69,6 +77,13 @@ let onlineSide = null;
 let onlineRoom = null;
 let onlineConnected = false;
 let onlineOpenPeerIds = new Set();
+let socialPhrases = [];
+let socialEmojis = [];
+let socialCatalogLoading = false;
+let socialCatalogDiagnostics = [];
+let socialFlashEntry = null;
+let socialFlashTimer = null;
+let socialTrayMode = null;
 let state = createInitialState();
 let selectedPieceId = null;
 let selectedSourceId = null;
@@ -100,6 +115,12 @@ function clearAiTimer() {
   aiTimer = null;
 }
 
+function clearSocialFlashTimer() {
+  if (!socialFlashTimer) return;
+  clearTimeout(socialFlashTimer);
+  socialFlashTimer = null;
+}
+
 function resetMatchState() {
   clearAiTimer();
   state = createInitialState();
@@ -119,6 +140,13 @@ function cleanupOnlineClient() {
   onlineRoom = null;
   onlineConnected = false;
   onlineOpenPeerIds = new Set();
+  socialPhrases = [];
+  socialEmojis = [];
+  socialCatalogLoading = false;
+  socialCatalogDiagnostics = [];
+  socialFlashEntry = null;
+  socialTrayMode = null;
+  clearSocialFlashTimer();
 }
 
 function startLocalGame() {
@@ -273,11 +301,37 @@ function attachOnlineClient(client) {
   });
   client.addEventListener("snapshot", (event) => restoreOnlineSnapshot(event.detail.snapshot));
   client.addEventListener("game-message", (event) => handleOnlineGameMessage(event.detail.envelope));
+  client.addEventListener("social-message", (event) => {
+    const entry = createSocialEntry({
+      detail: event.detail,
+      room: onlineRoom,
+      selfPeerId: client.peerId,
+    });
+    if (entry) showSocialEntry(entry);
+  });
   client.addEventListener("core-error", (event) => {
     onlineStatusEl.textContent = event.detail.message ?? "在线连接出错";
     warningMessage = event.detail.message ?? "";
     render();
   });
+}
+
+async function loadOnlineSocialCatalogs(client) {
+  socialPhrases = [];
+  socialEmojis = [];
+  socialCatalogDiagnostics = [];
+  const urls = gameConfig?.online?.socialCatalogUrls ?? [];
+  if (urls.length === 0) return;
+
+  socialCatalogLoading = true;
+  try {
+    await client.loadSocialCatalogs(urls);
+    socialPhrases = client.getSocialResources({ kind: "phrase" });
+    socialEmojis = client.getSocialResources({ kind: "emoji" });
+    socialCatalogDiagnostics = client.getSocialCatalogDiagnostics();
+  } finally {
+    socialCatalogLoading = false;
+  }
 }
 
 function adoptOnlineRoom(room) {
@@ -306,6 +360,7 @@ async function createOnlineRoom() {
       maxPeers: 2,
     });
     attachOnlineClient(client);
+    await loadOnlineSocialCatalogs(client);
     const result = await client.createRoom({
       displayName: onlineNameInput.value.trim() || "Player",
       maxPeers: 2,
@@ -335,6 +390,7 @@ async function joinOnlineRoom() {
       maxPeers: 2,
     });
     attachOnlineClient(client);
+    await loadOnlineSocialCatalogs(client);
     const result = await client.joinRoom({
       roomCode: roomCodeInput.value.trim(),
       displayName: onlineNameInput.value.trim() || "Player",
@@ -373,6 +429,53 @@ function handleOnlineGameMessage(envelope) {
 
   if (envelope.type === "game-reset") {
     restoreOnlineSnapshot(envelope.payload?.snapshot);
+  }
+}
+
+function showSocialEntry(entry) {
+  socialFlashEntry = entry;
+  clearSocialFlashTimer();
+  socialFlashTimer = setTimeout(() => {
+    socialFlashEntry = null;
+    socialFlashTimer = null;
+    renderSocialPanel();
+  }, 4200);
+  renderSocialPanel();
+}
+
+function createLocalSocialEntry(envelope, resource) {
+  return createSocialEntry({
+    detail: {
+      envelope,
+      message: envelope.payload,
+      resource,
+    },
+    room: onlineRoom,
+    selfPeerId: onlineClient?.peerId,
+  });
+}
+
+function sendOnlinePhrase(resource) {
+  if (!onlineClient || !isOnlineReady()) return;
+  try {
+    const envelope = onlineClient.sendPhrase(resource);
+    const entry = createLocalSocialEntry(envelope, resource);
+    if (entry) showSocialEntry(entry);
+  } catch (error) {
+    warningMessage = error.message;
+    render();
+  }
+}
+
+function sendOnlineEmoji(resource) {
+  if (!onlineClient || !isOnlineReady()) return;
+  try {
+    const envelope = onlineClient.sendEmoji(resource);
+    const entry = createLocalSocialEntry(envelope, resource);
+    if (entry) showSocialEntry(entry);
+  } catch (error) {
+    warningMessage = error.message;
+    render();
   }
 }
 
@@ -702,6 +805,109 @@ function renderCombinations() {
   }
 }
 
+function socialNoticeText() {
+  if (!isOnlineGame()) return "";
+  if (socialCatalogLoading) return "社交资源加载中";
+  if ((gameConfig?.online?.socialCatalogUrls ?? []).length === 0) return "未配置社交资源";
+  if (socialPhrases.length === 0 && socialEmojis.length === 0) return "没有可用的快捷语或表情";
+  if (!isOnlineReady()) return onlineWaitMessage();
+  if (socialCatalogDiagnostics.some((item) => item.level === "error")) return "部分社交资源不可用";
+  return "选择快捷语或表情发送";
+}
+
+function renderSocialFlash() {
+  socialFlashEl.replaceChildren();
+  socialFlashEl.classList.toggle("hidden", !socialFlashEntry);
+  if (!socialFlashEntry) return;
+
+  const name = document.createElement("div");
+  name.className = "social-flash-name";
+  name.textContent = socialFlashEntry.direction === "local" ? "你" : socialFlashEntry.senderName;
+  socialFlashEl.append(name);
+
+  if (socialFlashEntry.kind === "phrase") {
+    const text = document.createElement("div");
+    text.className = "social-flash-text";
+    text.textContent = socialFlashEntry.text;
+    socialFlashEl.append(text);
+    return;
+  }
+
+  const emoji = document.createElement("div");
+  emoji.className = "social-flash-emoji";
+  if (socialFlashEntry.assetUrl) {
+    const image = document.createElement("img");
+    image.src = socialFlashEntry.assetUrl;
+    image.alt = "";
+    image.ariaHidden = "true";
+    emoji.append(image);
+  }
+  socialFlashEl.append(emoji);
+}
+
+function renderSocialButtons(container, resources, kind, expanded) {
+  container.replaceChildren();
+  container.classList.toggle("emoji-actions", kind === "emoji");
+  socialTrayEl.classList.toggle("hidden", !expanded);
+  if (!expanded) return;
+
+  if (resources.length === 0) {
+    container.append(emptyLine(kind === "phrase" ? "无快捷语" : "无表情"));
+    return;
+  }
+
+  for (const resource of resources) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `social-button ${kind === "emoji" ? "emoji-button" : ""}`;
+    button.disabled = !isOnlineReady();
+    if (kind === "phrase") {
+      button.textContent = resource.text;
+      button.ariaLabel = "发送快捷语";
+      button.addEventListener("click", () => sendOnlinePhrase(resource));
+    } else {
+      if (resource.assetUrl) {
+        const image = document.createElement("img");
+        image.src = resource.assetUrl;
+        image.alt = "";
+        image.ariaHidden = "true";
+        button.append(image);
+      } else {
+        button.textContent = "表情";
+      }
+      button.ariaLabel = "发送表情";
+      button.addEventListener("click", () => sendOnlineEmoji(resource));
+    }
+    container.append(button);
+  }
+}
+
+function renderSocialPanel() {
+  onlineSocialPanelEl.classList.toggle("hidden", !isOnlineGame());
+  if (!isOnlineGame()) return;
+  socialNoticeEl.textContent = socialNoticeText();
+  renderSocialFlash();
+  const hasPhrases = socialPhrases.length > 0;
+  const hasEmojis = socialEmojis.length > 0;
+  socialPhraseToggleBtn.disabled = !hasPhrases;
+  socialEmojiToggleBtn.disabled = !hasEmojis;
+  socialPhraseToggleBtn.classList.toggle("active", socialTrayMode === "phrase");
+  socialEmojiToggleBtn.classList.toggle("active", socialTrayMode === "emoji");
+
+  const mode = socialTrayMode === "emoji" ? "emoji" : socialTrayMode === "phrase" ? "phrase" : null;
+  renderSocialButtons(
+    socialTrayActionsEl,
+    mode === "emoji" ? socialEmojis : socialPhrases,
+    mode ?? "phrase",
+    Boolean(mode),
+  );
+}
+
+function toggleSocialTray(mode) {
+  socialTrayMode = socialTrayMode === mode ? null : mode;
+  renderSocialPanel();
+}
+
 function renderMoveLog() {
   moveLogEl.replaceChildren();
   for (const entry of moveLog.slice(-24).reverse()) {
@@ -719,6 +925,7 @@ function render() {
   renderBoard();
   renderActions();
   renderCombinations();
+  renderSocialPanel();
   renderMoveLog();
 }
 
@@ -882,6 +1089,8 @@ chooseSouthBtn.addEventListener("click", () => startAiGame("south"));
 onlineBackBtn.addEventListener("click", goHome);
 createOnlineRoomBtn.addEventListener("click", () => void createOnlineRoom());
 joinOnlineRoomBtn.addEventListener("click", () => void joinOnlineRoom());
+socialPhraseToggleBtn.addEventListener("click", () => toggleSocialTray("phrase"));
+socialEmojiToggleBtn.addEventListener("click", () => toggleSocialTray("emoji"));
 homeBtn.addEventListener("click", goHome);
 resetBtn.addEventListener("click", resetGame);
 undoBtn.addEventListener("click", undo);

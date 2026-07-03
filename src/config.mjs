@@ -6,10 +6,15 @@ export function normalizeGameConfig(rawConfig = {}) {
   if (!signalingUrl || typeof signalingUrl !== "string") {
     throw new Error("online.signalingUrl is required");
   }
+  const socialCatalogUrls = rawConfig.online?.socialCatalogUrls ?? [];
+  if (!Array.isArray(socialCatalogUrls)) {
+    throw new Error("online.socialCatalogUrls must be an array");
+  }
   return {
     online: {
       signalingUrl: signalingUrl.trim(),
       coreClientModuleUrl: String(rawConfig.online?.coreClientModuleUrl ?? DEFAULT_CORE_CLIENT_MODULE_URL).trim(),
+      socialCatalogUrls: socialCatalogUrls.map((url) => String(url).trim()).filter(Boolean),
     },
   };
 }

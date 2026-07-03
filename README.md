@@ -172,6 +172,7 @@ Punic-Chess/
     ├── labels.mjs
     ├── online-core-loader.mjs
     ├── online-seats.mjs
+    ├── online-social.mjs
     └── ui.mjs
 ```
 
@@ -181,11 +182,21 @@ Online play uses a signaling service so two remote players can share room state 
 
 When deploying your own instance, make sure the frontend points to your own secure WebSocket endpoint in `game.config.json`, for example:
 
-```text
-wss://your-domain.example/ws
+```json
+{
+  "online": {
+    "signalingUrl": "wss://your-domain.example/ws",
+    "coreClientModuleUrl": "./vendor/board-games-core/board-games-core.mjs",
+    "socialCatalogUrls": [
+      "./social/table-talk-starter-pack/catalog.json"
+    ]
+  }
+}
 ```
 
 If your site is served over HTTPS, the online service should also use `wss://` rather than `ws://`; otherwise browsers may block the connection as mixed content.
+
+The optional `socialCatalogUrls` entries point to static social resource catalogs. Punic Chess currently renders catalog phrases and emojis only; reactions such as tomatoes, eggs, or roses are left for a later version.
 
 ## Design Philosophy
 
